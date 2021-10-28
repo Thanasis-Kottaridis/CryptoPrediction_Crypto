@@ -27,7 +27,8 @@ from kafka import KafkaConsumer
 """
     Is test Impl property
 """
-isTestImpl = True
+isTestImpl = False
+topicsList = [KafkaTopics.RawCryptoTicker.value, KafkaTopics.RawCryptoOHCL.value]
 
 
 class RawCryptoConsumerContext :
@@ -69,7 +70,6 @@ class RawCryptoConsumerContext :
         self.__state.consumedTopics = self.__consumedTopics
         self.__state.mongoCollection = self.__mongoCollection
 
-
     def presentState(self) :
         print(f"My Current State is {type(self.__state).__name__}")
 
@@ -96,15 +96,15 @@ class RawCryptoConsumerState(ABC) :
         return self.__context
 
     @property
-    def processedCryptoData(self) -> dict:
+    def processedCryptoData(self) -> dict :
         return self.__processedCryptoData
 
     @property
-    def consumedTopics(self) -> list:
+    def consumedTopics(self) -> list :
         return self.__consumedTopics
 
     @property
-    def mongoCollection(self) -> Collection:
+    def mongoCollection(self) -> Collection :
         return self.__mongoCollection
 
     @context.setter
@@ -117,7 +117,7 @@ class RawCryptoConsumerState(ABC) :
         self.__context = context
 
     @processedCryptoData.setter
-    def processedCryptoData(self, value) -> None:
+    def processedCryptoData(self, value) -> None :
         """
         Create a property setter for processedCryptoData
         :param value: a dictionary consisting of data consumed from kafka
@@ -125,7 +125,7 @@ class RawCryptoConsumerState(ABC) :
         self.__processedCryptoData = value
 
     @consumedTopics.setter
-    def consumedTopics(self, value) -> None:
+    def consumedTopics(self, value) -> None :
         """
         Consumed Topics list setter method
         :param value: a list that contains topics that have been consumed
@@ -133,7 +133,7 @@ class RawCryptoConsumerState(ABC) :
         self.__consumedTopics = value
 
     @mongoCollection.setter
-    def mongoCollection(self, value):
+    def mongoCollection(self, value) :
         self.__mongoCollection = value
 
     @abstractmethod
@@ -221,14 +221,14 @@ class RCCInitState(RawCryptoConsumerState) :
         self.context.setState(RCCRecursionState())
 
 
-class RCCRecursionState(RawCryptoConsumerState):
+class RCCRecursionState(RawCryptoConsumerState) :
     """
         Raw Crypto Consumer RecursionState
         This stare calls it self until all data has been consumed
     """
 
     def consumeTickerMessage(self, message: dict) :
-        if KafkaTopics.RawCryptoTicker.value in self.consumedTopics:
+        if KafkaTopics.RawCryptoTicker.value in self.consumedTopics :
             print("Something went wrong while consuming messages.\n This Topic {} has already been consumed"
                   .format(KafkaTopics.RawCryptoTicker.value))
             return
@@ -254,19 +254,19 @@ class RCCRecursionState(RawCryptoConsumerState):
         super(RCCRecursionState, self).consumeQuoteMessage(message)
         self.nextState()
 
-    def nextState(self):
-        if len(self.consumedTopics) == 3:
+    def nextState(self) :
+        if len(self.consumedTopics) == len(topicsList) :
             self.postToMongo()
-        else:
+        else :
             self.context.setState(RCCRecursionState())
 
-    def postToMongo(self):
-        print("put data to Mongo")
+    def postToMongo(self) :
         self.mongoCollection.insert_one(self.processedCryptoData)
+        print('message added to {}'.format(self.mongoCollection))
         self.context.setState(RCCInitState())
 
 
-def allTopicsConsumerTest():
+def allTopicsConsumerTest() :
     """
     Use this Code to Test if consumer state machine works correctly.
     :return: Void
@@ -284,15 +284,26 @@ def allTopicsConsumerTest():
         sleep(5)
 
 
-def allTopicsConsumerImpl():
-    # setp up kafka raw crypto quotes consumer
+def allTopicsConsumerImpl() :
+    # setup up kafka consumer for multiple topics
     consumer = KafkaConsumer(
-        KafkaTopics.RawCryptoQuotes.value,
         bootstrap_servers=BOOTSTRAP_SERVERS,
         auto_offset_reset='earliest',
         enable_auto_commit=True,
         group_id='my-group',
         value_deserializer=lambda x : loads(x.decode('utf-8')))
+    consumer.subscribe(topicsList)
+
+    # read consumer messages
+    for message in consumer :
+        if message.topic == KafkaTopics.RawCryptoQuotes.value :
+            myStateMachine.consumeQuoteMessage(message.value)
+        elif message.topic == KafkaTopics.RawCryptoTicker.value :
+            myStateMachine.consumeTickerMessage(message.value)
+        elif message.topic == KafkaTopics.RawCryptoOHCL.value :
+            myStateMachine.consumeOHCLMessage(message.value['data']['ohlc'][0])
+        else:
+            print("UNKNOWN TOPIC CONSUMED")
 
 
 if __name__ == '__main__' :
@@ -301,6 +312,9 @@ if __name__ == '__main__' :
     myStateMachine = RawCryptoConsumerContext(RCCInitState())
     myStateMachine.presentState()
 
-    allTopicsConsumerTest()
-
-
+    if isTestImpl:
+        # TEST IMPL
+        allTopicsConsumerTest()
+    else:
+        # Actual IMPL
+        allTopicsConsumerImpl()
