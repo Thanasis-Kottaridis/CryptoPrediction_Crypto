@@ -13,7 +13,7 @@ import utils.utils as utils
 """
 Const vals
 """
-delay = 10
+delay = 60
 processedCryptoData = {}
 
 
