@@ -59,10 +59,13 @@ async def main() :
         await task_ticker
         await task_ohlc
 
-        print(f"finished at {time.strftime('%X')}")
         global processedCryptoData
         print(processedCryptoData)
+        result = mongoCollection.insert_one(processedCryptoData)
+        print("inserted doc id: {}".format(result.inserted_id))
         processedCryptoData = {}
+        print(f"finished at {time.strftime('%X')}")
+
         await asyncio.sleep(delay)
 
 
@@ -71,7 +74,7 @@ if __name__ == '__main__':
     producer = KafkaConnectors.connectKafkaProducer()
 
     # create mongo connection
-    client, db = mongoConnector.connectMongoDBAsync()
+    client, db = mongoConnector.connectMongoDB()
     mongoCollection = db.processed_crypto_data
 
     # inject coinMarketCap repo

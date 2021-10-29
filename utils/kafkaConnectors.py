@@ -7,7 +7,7 @@
 import enum
 from kafka import KafkaProducer
 
-isLocal = True  # False to query server
+isLocal = False  # False to query server
 # 192.168.0.1:9092 is the door for kafka master
 BOOTSTRAP_SERVERS = ['localhost:9092'] if isLocal else ['192.168.0.1:9092']
 

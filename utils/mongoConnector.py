@@ -2,7 +2,7 @@ from pymongo import MongoClient
 import motor.motor_asyncio
 
 # configuration const!
-isLocal = True  # False to query server
+isLocal = False  # False to query server
 connect_to_server = 2  # 1 to connect to server .74, 2 to connect to server private network
 showQueryExplain = False
 
