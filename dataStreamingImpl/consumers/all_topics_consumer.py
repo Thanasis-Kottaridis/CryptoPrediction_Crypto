@@ -28,7 +28,9 @@ from kafka import KafkaConsumer
     Is test Impl property
 """
 isTestImpl = False
-topicsList = [KafkaTopics.RawCryptoTicker.value, KafkaTopics.RawCryptoOHCL.value]
+topicsList = [KafkaTopics.RawCryptoQuotes.value,
+              KafkaTopics.RawCryptoTicker.value,
+              KafkaTopics.RawCryptoOHCL.value]
 
 
 class RawCryptoConsumerContext :
@@ -189,12 +191,8 @@ class RawCryptoConsumerState(ABC) :
         """
 
         # rename message properties
-        message = utils.renameDictKeys(message, "Quotes")
-        # TODO ADD DATA TO TICKER COLLECTION
-        print(message)
-
-        # merge message to __processedCryptoData
-        # self.processedCryptoData = {**self.processedCryptoData, **message}
+        data = message['data']
+        message = utils.renameDictKeys(data, "Quotes")
         self.processedCryptoData.update(message)
         print(self.processedCryptoData)
 

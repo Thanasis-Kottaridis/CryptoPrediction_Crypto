@@ -22,7 +22,13 @@ import sys
 sys.path.insert(1, "./")
 
 import requests
-from requests.exceptions import Timeout, TooManyRedirects
+from requests.exceptions import Timeout, TooManyRedirects, HTTPError
+
+# import async libraries
+import asyncio
+from aiohttp import ClientSession
+
+# import utils
 import json
 import utils.utils as utils
 import utils.kafkaConnectors as KafkaConnectors
@@ -56,7 +62,6 @@ class BitstampRepo(object) :
             response = requests.get("https://www.bitstamp.net/api/v2/ohlc/{}/".format(cls.currency_pair), params=params)
             _data = json.loads(response.text)
             _data["data"]["ohlc"][0]["timestamp_iso"] = utils.unixToIsoTimestamp(_data["data"]["ohlc"][0]["timestamp"])
-            # _data = cls.transformResponse(json.loads(response.text))
             return json.dumps(_data)  # response.text  # _data
         except (ConnectionError, Timeout, TooManyRedirects) as e :
             print(e)
@@ -65,6 +70,44 @@ class BitstampRepo(object) :
             return None
 
     @classmethod
-    def transformResponse(cls, data) :
-        data["timestamp_iso"] = utils.unixToIsoTimestamp(data["timestamp"])
-        return data
+    async def fetchBitstampTickerAsync(cls, session: ClientSession):
+        url = "https://www.bitstamp.net/api/v2/ticker/{}/".format(cls.currency_pair)
+
+        try :
+            response = await session.request(method='GET', url=url)
+            response.raise_for_status()
+            print(f"Response status ({url}): {response.status}")
+        except HTTPError as http_err :
+            print(f"HTTP error occurred: {http_err}")
+        except (ConnectionError, Timeout, TooManyRedirects) as err :
+            print(f"An error ocurred: {err}")
+
+        _data = await response.json()
+        _data["timestamp_iso"] = utils.unixToIsoTimestamp(_data["timestamp"])
+        print(_data)
+        return _data  #json.dumps(_data)
+
+
+    @classmethod
+    async def fetchBitstampOHLCAsync(cls, session: ClientSession, step=60, limit=1) :
+
+        params = {
+            "step" : step,
+            "limit" : limit
+        }
+
+        url = "https://www.bitstamp.net/api/v2/ohlc/{}/".format(cls.currency_pair)
+
+        try :
+            response = await session.request(method='GET', url=url, params= params)
+            response.raise_for_status()
+            print(f"Response status ({url}): {response.status}")
+        except HTTPError as http_err :
+            print(f"HTTP error occurred: {http_err}")
+        except (ConnectionError, Timeout, TooManyRedirects) as err :
+            print(f"An error ocurred: {err}")
+
+        _data = await response.json()
+        _data["data"]["ohlc"][0]["timestamp_iso"] = utils.unixToIsoTimestamp(_data["data"]["ohlc"][0]["timestamp"])
+        print(_data)
+        return _data  # json.dumps(_data)

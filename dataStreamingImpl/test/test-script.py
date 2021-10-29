@@ -36,7 +36,7 @@ A beater solution is to add main directory in PYTHONPATH variable (this will be 
 """
 import sys
 
-sys.path.insert(1, "./")
+sys.path.insert(1, "../../")
 
 import sched
 import time
