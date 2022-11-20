@@ -62,6 +62,10 @@ async def main() :
         global processedCryptoData
         print(processedCryptoData)
         result = mongoCollection.insert_one(processedCryptoData)
+
+        # TODO Publish message to Kafka.
+        # KafkaConnectors.publish_message(producer, KafkaConnectors.KafkaTopics.ProcessedCryptoData.value, 'processedCryptoData', processedCryptoData)
+
         print("inserted doc id: {}".format(result.inserted_id))
         processedCryptoData = {}
         print(f"finished at {time.strftime('%X')}")
