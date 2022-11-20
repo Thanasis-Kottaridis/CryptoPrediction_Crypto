@@ -3,7 +3,9 @@
 test temp mail: ligen59951@sicmag.com
 name: Thanasis Testmail1
 pass: Test1234!
-secret-key: 474b8679-0b93-46ce-97a9-5500f9b95cc8
+secret-key: ce5b5796-6782-44c0-9393-a3ed26d47362 ----------  old one --------- 474b8679-0b93-46ce-97a9-5500f9b95cc8
+
+blocked key: 16b5885f-a0b0-4938-877b-57ed469217db
 """
 
 # Imports
@@ -56,7 +58,11 @@ class CoinMarketRepo(object) :
     }
 
     miners_queue = [
-        {"miner_key" : "16b5885f-a0b0-4938-877b-57ed469217db  "},
+        {"miner_key" : "ce5b5796-6782-44c0-9393-a3ed26d47362"},  # thanoskott@mailinator.com
+        {"miner_key" : "4a2ab507-2988-4dbe-a7f2-beff31b83ddc"},  # thanoskott1@mailinator.com
+        {"miner_key" : "478d4caa-b221-480b-8e8d-ea8753ae8b62"},  # thanos_thesis_1@mailinator.com
+        {"miner_key" : "669c9c1b-7dd2-42ed-8039-f135f0a8774c"},  # last_lada@mailinator.com
+        {"miner_key" : "ed1eedeb-8a9e-4f86-8d51-21ea3c435f87"},  # jose_token@mailinator.com
         {"miner_key" : "5799ff66-6949-4fe9-8e5b-b8c241d0363e"},
         {"miner_key" : "43ab984a-3223-4741-9055-4a277aaced7a"},
         {"miner_key" : "8638f6c2-81b2-4ebb-9d3b-aa2c436c0d74"},

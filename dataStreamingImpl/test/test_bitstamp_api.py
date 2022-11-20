@@ -14,6 +14,21 @@ import sys
 from json import loads, dumps
 import pprint
 from repository.bitstampRepo import BitstampRepo
+import repository.coinMarketRepo as cmp
+import random
+
+miners_queue = [
+    {"miner_key" : "ce5b5796-6782-44c0-9393-a3ed26d47362"},  # thanoskott@mailinator.com
+    {"miner_key" : "4a2ab507-2988-4dbe-a7f2-beff31b83ddc"},  # thanoskott1@mailinator.com
+    {"miner_key" : "478d4caa-b221-480b-8e8d-ea8753ae8b62"},  # thanos_thesis_1@mailinator.com
+    {"miner_key" : "669c9c1b-7dd2-42ed-8039-f135f0a8774c"},  # last_lada@mailinator.com
+    {"miner_key" : "ed1eedeb-8a9e-4f86-8d51-21ea3c435f87"},  # jose_token@mailinator.com
+    {"miner_key" : "5799ff66-6949-4fe9-8e5b-b8c241d0363e"},
+    {"miner_key" : "43ab984a-3223-4741-9055-4a277aaced7a"},
+    {"miner_key" : "8638f6c2-81b2-4ebb-9d3b-aa2c436c0d74"},
+    {"miner_key" : "8c7a061d-4172-4f0c-829d-64f4468726d0"},
+]
+random.shuffle(miners_queue)
 
 
 def bitstampExample() :
@@ -92,6 +107,16 @@ def bitstampOHLCRequest() :
 
 if __name__ == '__main__' :
     while True :
+
+        print("------------------ Quotes Latest Keys ------------------")
+        print(miners_queue)
+        break
+        print("------------------ Quotes Latest Response ------------------")
+        _key = miners_queue[0]["miner_key"]
+        # fetch crypto data
+        print("fetch data with key:", _key)
+        quotes_latest_response = cmp.fetchLatestQuotes(_key)  # bitstampTickerRequest()
+        pprint.pprint(quotes_latest_response)
 
         print("------------------ Ticker Response ------------------")
         response1 = BitstampRepo.fetchBitstampTicker() #bitstampTickerRequest()
