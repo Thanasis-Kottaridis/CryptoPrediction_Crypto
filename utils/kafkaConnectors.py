@@ -22,6 +22,7 @@ class KafkaTopics(enum.Enum):
     RawCryptoTicker = "RAW_CRYPTO_TICKER"
     RawCryptoTweets = "RAW_CRYPTO_TWEETS"
     AppLogging = "CRYPTO_PREDICTION_LOGGING"
+    ProcessedCryptoData = "PROCESSED_CRYPTO_DATA"
 
 
 def connectKafkaProducer():

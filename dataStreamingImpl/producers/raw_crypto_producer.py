@@ -1,3 +1,4 @@
+import json
 import sys
 sys.path.insert(1, "./")
 
@@ -63,8 +64,25 @@ async def main() :
         print(processedCryptoData)
         result = mongoCollection.insert_one(processedCryptoData)
 
-        # TODO Publish message to Kafka.
-        # KafkaConnectors.publish_message(producer, KafkaConnectors.KafkaTopics.ProcessedCryptoData.value, 'processedCryptoData', processedCryptoData)
+        # 1. Create KAFKA Payload that containts
+        #   - document _id
+        #   - and timestamp
+        #
+        # 2. Convert it to JSON
+        #
+        # 3. Publish Message
+
+        kafkaMessagePayload = {
+            "id": str(result.inserted_id),
+            "timestamp": processedCryptoData["Ticker_timestamp"]
+        }
+        kafkaMessage = json.dumps(kafkaMessagePayload)
+
+        KafkaConnectors.publish_message(
+            producer,
+            KafkaConnectors.KafkaTopics.ProcessedCryptoData.value,
+            'kafkaMessage', kafkaMessage
+        )
 
         print("inserted doc id: {}".format(result.inserted_id))
         processedCryptoData = {}
