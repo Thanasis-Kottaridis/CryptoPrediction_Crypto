@@ -18,6 +18,8 @@ from abc import ABC, abstractmethod
 import sys
 from os import path
 
+from bson import ObjectId
+
 sys.path.insert(1, "./")
 
 # Import Utils
@@ -157,7 +159,7 @@ class GetRedditPostsState(RedditNLPState) :
 
     # Target Timestamp
     # Friday, October 29, 2021 5:07:29 PM
-    __TARGET_TIMESTAMP = 1635527249  # if not isTestImpl else 1669333386
+    __TARGET_TIMESTAMP = 1635527249
 
     # data file name:
     __file_name = "reddit_crypto_test_data.csv"  # "reddit_crypto_data.csv"
@@ -185,8 +187,8 @@ class GetRedditPostsState(RedditNLPState) :
     Private Helper Funcs
     """
 
-    @staticmethod
-    def __downloadNLTKLexicons() :
+    @classmethod
+    def __downloadNLTKLexicons(cls) :
         # Downloading NLTK’s databases
         nltk.download('vader_lexicon')  # get lexicons data
         nltk.download('punkt')  # Pre-trained models that help us tokenize sentences.
@@ -232,7 +234,7 @@ class GetRedditPostsState(RedditNLPState) :
             """
             cursor = collection.find().sort("created_unix", pymongo.DESCENDING).limit(1)
             for doc in cursor :
-                TARGET_TIMESTAMP = doc["created_unix"]
+                self.__TARGET_TIMESTAMP = int(doc["created_unix"])
 
         # Use This if you want to write in .CSV
         # initialize dataframe
@@ -285,6 +287,9 @@ class GetRedditPostsState(RedditNLPState) :
             df = self.__dataPreprocessing(df)
             df = self.__getPolarity(df)
 
+            # calculate weighted polarity
+            df['weighted_polarity'] = df["compound"] * df['score']
+
             # get last subreddit created time
             created_unix = int(df.iloc[-1 :].created_unix)
 
@@ -306,9 +311,6 @@ class GetRedditPostsState(RedditNLPState) :
             else :
                 # write df to CSV
                 print("Store DF")
-                # if path.exists(self.__file_name):
-                #     df.to_csv(self.__file_name, sep='\t', encoding='utf-8')
-                # else:
                 df.to_csv(
                     self.__file_name,
                     mode='a',
@@ -317,10 +319,9 @@ class GetRedditPostsState(RedditNLPState) :
                     sep='\t',
                     encoding='utf-8'
                 )
-        pass
 
-    @staticmethod
-    def __dataPreprocessing(df: pd.DataFrame) -> pd.DataFrame :
+    @classmethod
+    def __dataPreprocessing(cls, df: pd.DataFrame) -> pd.DataFrame :
         """
                @TODO Data Cleanning
                @Remove:
@@ -372,8 +373,8 @@ class GetRedditPostsState(RedditNLPState) :
 
         return df
 
-    @staticmethod
-    def __getPolarity(df: pd.DataFrame) -> pd.DataFrame :
+    @classmethod
+    def __getPolarity(cls, df: pd.DataFrame) -> pd.DataFrame :
         """
             This helper function is used in order to get polarity of all reddit post titles in a given DF.
             polarity is calculated using NLTK and VADER analyzer.
@@ -412,10 +413,99 @@ class GetRedditPostsState(RedditNLPState) :
 
 
 class UpdateBitcoinDataState(RedditNLPState) :
+    # Unix Time Consts
+    __ONE_MINUTE_SECONDS = 60
+
     def didEnter(self) -> None :
-        pass
+        # 1. get Weighted Reddit Polarity for posts in range
+        #   from record timestamp plus 30 minutes
+        weightedRedditPolarity = self.__getWeightedRedditPolarity(
+            timeFrom=int(self.context.targetRecordTimestamp),
+            timeRange=self.__ONE_MINUTE_SECONDS * 30
+        )
+
+        print(weightedRedditPolarity)
+
+        # 2. update mongo record with weighted Polarity
+        self.__updateCryptoRecord(weightedRedditPolarity)
+
+        # 3. enter next state
+        self.nextState()
 
     def nextState(self) -> None :
+        self.context.setState(ProduceKafkaMessage())
+
+    """
+    Private Helper Functions
+    """
+    def __getRedditPostsInRange(self, timeFrom: int, timeRange: int) -> pd.DataFrame :
+        redditCollection = self.context.db.reddit_crypto_data
+
+        # vres ta posts pou eginan tin teleftea misi wra
+        toTime = timeFrom - timeRange
+        redditPosts = redditCollection.find({'created_unix' : {'$lt' : timeFrom, '$gte' : toTime}})
+        print(redditPosts.count())
+        return pd.DataFrame(list(redditPosts))
+
+    def __getWeightedRedditPolarity(self, timeFrom: int, timeRange: int) -> int:
+
+        # filter results df
+        resultsDf = self.__getRedditPostsInRange(timeFrom, timeRange)
+
+        if len(resultsDf.index) == 0 :
+            return 0
+
+        scoreSum = resultsDf["score"].sum()
+        print("-------- weighted_polarity calculated --------")
+        if scoreSum == 0 :
+            res = resultsDf['weighted_polarity'].sum()
+            print(f"-------- {res} -------- \n")
+            return res
+        else :
+            res = resultsDf['weighted_polarity'].sum() / resultsDf["score"].sum()
+            print(f"-------- {res} -------- \n")
+            return res
+
+    def __updateCryptoRecord(self, weightedRedditPolarity):
+        # get mongo collection
+        collection = self.context.db.processed_crypto_data
+        mongoId = ObjectId(self.context.targetRecordId)
+
+        # find record
+        record = collection.find_one(mongoId)
+        record['reddit_compound_polarity'] = weightedRedditPolarity
+
+        # update record by id
+        # upsert = False will update doc instead of inserting new one
+        collection.update_one({'_id' : mongoId}, {"$set" : record}, upsert=False)
+
+
+class ProduceKafkaMessage(RedditNLPState):
+
+    def didEnter(self) -> None :
+        # 1. create kafka producer
+        producer = kafkaConnectors.connectKafkaProducer()
+
+        # 2. Create Message payload
+        kafkaMessagePayload = {
+            "id" : self.context.targetRecordId,
+        }
+        _kafkaMessage = dumps(kafkaMessagePayload)
+
+        # 3. Produce message that NLP preprocessing finished
+        kafkaConnectors.publish_message(
+            producer,
+            kafkaConnectors.KafkaTopics.CompleteCryptoNLP.value,
+            'kafkaMessage', _kafkaMessage
+        )
+
+        # 4. call next state (For future usage)
+        self.nextState()
+
+    def nextState(self) -> None :
+        print("----------------------------")
+        print(f"NLP preprocessing of record {self.context.targetRecordId} Completed Successfully!!!")
+        print("----------------------------")
         pass
 
 
@@ -425,19 +515,19 @@ if __name__ == '__main__' :
         myStateMachine = RedditNLPContext(kafkaMessage=mockKafkaMessage)
         myStateMachine.presentState()
         exit()
+    else:
+        # Actual Implementation.
+        # set up kafka raw crypto quotes consumer
+        consumer = KafkaConsumer(
+            kafkaConnectors.KafkaTopics.ProcessedCryptoData.value,
+            bootstrap_servers=kafkaConnectors.BOOTSTRAP_SERVERS,
+            auto_offset_reset='earliest',
+            enable_auto_commit=True,
+            group_id='my-group',
+            value_deserializer=lambda x : loads(x.decode('utf-8')))
 
-    # Actual Implementation.
-    # set up kafka raw crypto quotes consumer
-    consumer = KafkaConsumer(
-        kafkaConnectors.KafkaTopics.ProcessedCryptoData.value,
-        bootstrap_servers=kafkaConnectors.BOOTSTRAP_SERVERS,
-        auto_offset_reset='earliest',
-        enable_auto_commit=True,
-        group_id='my-group',
-        value_deserializer=lambda x : loads(x.decode('utf-8')))
-
-    # read consumer messages
-    for message in consumer :
-        kafkaMessage = message.value
-        myStateMachine = RedditNLPContext(kafkaMessage=kafkaMessage)
-        myStateMachine.presentState()
+        # read consumer messages
+        for message in consumer :
+            kafkaMessage = message.value
+            myStateMachine = RedditNLPContext(kafkaMessage=kafkaMessage)
+            myStateMachine.presentState()
