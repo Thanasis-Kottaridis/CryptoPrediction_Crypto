@@ -27,3 +27,7 @@ def renameDictKeys(dict, prefix) :
     return res
 
 
+def utc_to_datetime(ts) :
+    # if you encounter a "year is out of range" error the timestamp
+    # may be in milliseconds, try `ts /= 1000` in that case
+    return datetime.utcfromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
