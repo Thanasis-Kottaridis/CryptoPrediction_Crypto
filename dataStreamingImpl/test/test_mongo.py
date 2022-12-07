@@ -16,7 +16,9 @@ def getRedditPostsInRange(timeFrom, timeRange):
 
     # vres ta posts pou eginan tin teleftea misi wra
     toTime = timeFrom - timeRange
-    redditPosts = redditCollection.find({'created_unix' : {'$lt' : timeFrom, '$gte' : toTime}})
+    redditPosts = redditCollection.find(
+        {'created_unix' : {'$lt' : timeFrom, '$gte' : toTime}}
+    )
     print(redditPosts.count())
     return pd.DataFrame(list(redditPosts))
 

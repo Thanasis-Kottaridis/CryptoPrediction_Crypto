@@ -3,6 +3,8 @@
     email: thanoskott@gmail.com
     pass:  Test1234!
 """
+import sys
+sys.path.insert(1, "./")
 
 import hashlib
 import hmac
@@ -10,7 +12,6 @@ import time
 import requests
 from requests.exceptions import ConnectionError, Timeout, TooManyRedirects
 import uuid
-import sys
 from json import loads, dumps
 import pprint
 from repository.bitstampRepo import BitstampRepo
