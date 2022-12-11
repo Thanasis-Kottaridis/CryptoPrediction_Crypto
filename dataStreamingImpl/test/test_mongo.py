@@ -11,6 +11,33 @@ import pymongo
 import pprint
 
 
+def getRecordsInTimeRage(targetRecordTimestamp):
+    # creating or switching to ais_navigation collection
+    collection = db.processed_crypto_data
+
+    # Mongo response
+    timeFrom = int(targetRecordTimestamp)
+    timeRange = (100 * ONE_MINUTE_SECONDS)
+    toTime = timeFrom - timeRange
+
+    pipeline = [
+        {
+            "$addFields" : {
+                "convertedTimestamp" : {"$toDecimal" : "$Ticker_timestamp"}
+            }
+        },
+        {"$match" :
+             {"convertedTimestamp" : {"$gt" : toTime, "$lte" : timeFrom}}
+         }
+
+    ]
+
+    res = collection.aggregate(pipeline)
+
+    jsonData = list(res)
+
+    return jsonData
+
 def getRedditPostsInRange(timeFrom, timeRange):
     redditCollection = db.reddit_crypto_data
 

@@ -1,4 +1,5 @@
 import json
+import random
 import sys
 sys.path.insert(1, "./")
 
@@ -19,7 +20,7 @@ processedCryptoData = {}
 
 
 async def fetchRawCryptoQuotes(session: ClientSession):
-    _key = coinMarketRepo.miners_queue[0]["miner_key"]
+    _key = random.choice(coinMarketRepo.miners_queue)["miner_key"]
     # fetch crypto data
     print("fetch data with key:", _key)
     _data = await coinMarketRepo.fetchLatestQuotes(_key, session)

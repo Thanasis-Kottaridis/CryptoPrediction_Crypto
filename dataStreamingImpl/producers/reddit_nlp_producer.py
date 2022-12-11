@@ -415,25 +415,26 @@ class GetRedditPostsState(RedditNLPState) :
 class UpdateBitcoinDataState(RedditNLPState) :
     # Unix Time Consts
     __ONE_MINUTE_SECONDS = 60
+    __weightedRedditPolarity = None
 
     def didEnter(self) -> None :
         # 1. get Weighted Reddit Polarity for posts in range
         #   from record timestamp plus 30 minutes
-        weightedRedditPolarity = self.__getWeightedRedditPolarity(
+        self.__weightedRedditPolarity = self.__getWeightedRedditPolarity(
             timeFrom=int(self.context.targetRecordTimestamp),
             timeRange=self.__ONE_MINUTE_SECONDS * 30
         )
 
-        print(weightedRedditPolarity)
+        print(self.__weightedRedditPolarity)
 
-        # 2. update mongo record with weighted Polarity
-        self.__updateCryptoRecord(weightedRedditPolarity)
+        # 2. (Optional) update mongo record with weighted Polarity TODO USE THIS TO UPDATE IMMEDIATE MONGO RECORD
+        # self.__updateCryptoRecord(self.__weightedRedditPolarity)
 
         # 3. enter next state
         self.nextState()
 
     def nextState(self) -> None :
-        self.context.setState(ProduceKafkaMessage())
+        self.context.setState(ProduceKafkaMessage(self.__weightedRedditPolarity))
 
     """
     Private Helper Functions
@@ -467,6 +468,11 @@ class UpdateBitcoinDataState(RedditNLPState) :
             return res
 
     def __updateCryptoRecord(self, weightedRedditPolarity):
+        """
+        Use this function if you want to immediately update mongo record with polarity.
+        :param weightedRedditPolarity:
+        :return:
+        """
         # get mongo collection
         collection = self.context.db.processed_crypto_data
         mongoId = ObjectId(self.context.targetRecordId)
@@ -482,6 +488,11 @@ class UpdateBitcoinDataState(RedditNLPState) :
 
 class ProduceKafkaMessage(RedditNLPState):
 
+    __weightedRedditPolarity = None
+
+    def __init__(self, weightedRedditPolarity) -> None :
+        self.__weightedRedditPolarity = weightedRedditPolarity
+
     def didEnter(self) -> None :
         # 1. create kafka producer
         producer = kafkaConnectors.connectKafkaProducer()
@@ -489,6 +500,8 @@ class ProduceKafkaMessage(RedditNLPState):
         # 2. Create Message payload
         kafkaMessagePayload = {
             "id" : self.context.targetRecordId,
+            "timestamp": self.context.targetRecordTimestamp,
+            "weightedRedditPolarity": self.__weightedRedditPolarity
         }
         _kafkaMessage = dumps(kafkaMessagePayload)
 

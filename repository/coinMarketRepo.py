@@ -58,7 +58,6 @@ class CoinMarketRepo(object) :
     }
 
     miners_queue = [
-        {"miner_key" : "ce5b5796-6782-44c0-9393-a3ed26d47362"},  # thanoskott@mailinator.com
         {"miner_key" : "4a2ab507-2988-4dbe-a7f2-beff31b83ddc"},  # thanoskott1@mailinator.com
         {"miner_key" : "478d4caa-b221-480b-8e8d-ea8753ae8b62"},  # thanos_thesis_1@mailinator.com
         {"miner_key" : "669c9c1b-7dd2-42ed-8039-f135f0a8774c"},  # last_lada@mailinator.com

@@ -42,6 +42,7 @@ class FinalDataProcessor:
     __kafkaMessage = None
     __targetRecordId = None
     __targetRecordTimestamp = None
+    __weightedRedditPolarity = None
 
     @property
     def __propertyDict(self):
@@ -97,16 +98,33 @@ class FinalDataProcessor:
         self.__parseKafkaMessage(kafkaMessage)
         self.client, self.db = mongoConnector.connectMongoDB()
 
+    """
+    TODO FIX GIA NA TELIWNOUME
+    1. getFlattenCryptoData THA FTIAXNW MONO TA RECORD POU GINETE UPDATE
+        get apo to processed_crypto_data by id 
+        flat data
+        add redit polarity
+        keep it in a class var
+        
+    2. Check sto targer record an ipaxoun null  
+        An nai:
+            get from flatten_crypto_data tis 10 teleftees rows based on timestamp.
+            kai fill null values
+            
+    3. insert new flatten row sto  sto final collection view 
+    """
+
     def getFlattenCryptoData(self, storeToMongo=False):
         """
-        This helper fun is used to clean all crypto data selected from bitcoin API
-        and stored into processed_crypto_data collection.
+        This helper function does the following:
 
-        This functions selects only the most valuable fields and inserts them in to a new
-        mongo Collection named flatten_crypto_data
+        1. fetches from monge the target record
+        2. Flatten the nested json format and keeps
+         only the most valuable fields given in the `__propertyDict`
+        3. (optional) this function can store flatten data to mongo by default false
+        4. Keeps flatten data in a class VAR and returns `self`
 
-        :return: It returns flatten_data dictionary
-        and a separate list with ids (ids, flatten_data)
+        :return: self
         """
 
         print("----------------------------")
@@ -116,40 +134,20 @@ class FinalDataProcessor:
         target_elements = self.__propertyDict.keys()
 
         # creating or switching to ais_navigation collection
-        collection = self.db.processed_crypto_data
+        _collection = self.db.processed_crypto_data
+        jsonData = _collection.find_one(ObjectId(self.__targetRecordId))
 
-        # Mongo response
-        timeFrom = int(self.__targetRecordTimestamp)
-        timeRange = (100 * self.ONE_MINUTE_SECONDS)
-        toTime = timeFrom - timeRange
-
-        pipeline = [
-            {
-                "$addFields" : {
-                    "convertedTimestamp" : {"$toDecimal" : "$Ticker_timestamp"}
-                }
-            },
-            {"$match" :
-                 {"convertedTimestamp" : {"$gt" : toTime, "$lte" : timeFrom}}
-             }
-
-        ]
-
-        res = collection.aggregate(pipeline)
-
-        jsonData = list(res)
+        # add reddit polarity to record
+        jsonData['reddit_compound_polarity'] = self.__weightedRedditPolarity
 
         # create flatten data.
         flatten_data = []
         print(len(jsonData))
-        for doc in jsonData :
-            flatten_data.append(utils.flatten_json(doc, target_elements))
+        flatten_data.append(utils.flatten_json(jsonData, target_elements))
 
-        ids = None
         if storeToMongo :
-            ids = self.storeFlattenData(flatten_data)
+            self.storeFlattenData()
 
-        self.cryptoDataIDs = ids
         self.cryptoData = flatten_data
         return self
 
@@ -182,7 +180,10 @@ class FinalDataProcessor:
 
         We observe that Quotes_BTC API returns null some times.
         We have to fix this missing values.
-        First we create a DF with Null values to
+
+        1. Check if record has null values
+        2. if so Get some previous records in order fill null values
+        3. fill null values using pandas interpolate with direction forward
 
         # Columns With NAN values
 
@@ -210,30 +211,25 @@ class FinalDataProcessor:
         print("FIX NULL VALUES")
         print("----------------------------")
 
-        if self.doPlots :
-            for col in self.cryptoDataDf.columns.values.tolist() :
-                boxplot = self.cryptoDataDf.boxplot(column=[col])
-                plt.show()
+        # 1. Check for nan values
+        if not self.cryptoDataDf.isnull().values.any():
+            return self
 
-        # TODO ADD FOR REPORTING
-        # check for null values per column
-        # print("NaN values per column count: \n")
-        # print(self.cryptoDataDf.isna().sum())
+        # 2a. In Nan values exists get previous records.
+        previousDF = self.getRecordsInTimeRage(rangeMinutes=30)
+        if previousDF.empty:
+            return self
 
-        isNullDf = self.cryptoDataDf[self.cryptoDataDf.isnull().sum(1) > 0]
-        pprint(isNullDf.head())
+        # 2b. Concat DF to interpolate data.
+        mergeDF = previousDF.append(self.cryptoDataDf, ignore_index=True)
+        pprint(mergeDF.head())
 
-        # Use Fill Forward to fill the rest of columns
-        # flatten_df.fillna(method='ffill', inplace=True)
-        flatten_df = self.cryptoDataDf.interpolate(limit_direction="forward")
+        # 3. fill nun values with direction forward
+        mergeDF = mergeDF.interpolate(limit_direction="forward")
+        pprint(mergeDF.head())
 
-        # TODO ADD FOR REPORTING
-        # check for null values per column after interpolate
-        # print("NaN values per column count: \n")
-        # print(flatten_df.isna().sum())
-
-        fill_nan_df = flatten_df.iloc[isNullDf.index]
-        pprint(fill_nan_df.head())
+        # Select last row of the dataframe as a dataframe object
+        self.cryptoDataDf = mergeDF.iloc[-1 :]
         return self
 
     def cleanOutliers(self) :
@@ -282,12 +278,14 @@ class FinalDataProcessor:
         return self
 
     def storeFlattenData(self) :
+        print("----------------------------")
+        print("STORE FLATTEN DATA")
+        print("----------------------------")
 
-        clean_collection = self.db.test_flatten_crypto_data  # flatten_crypto_data
-        # drop collection if exists
-        clean_collection.drop()
+        clean_collection = self.db.flatten_crypto_data  # flatten_crypto_data
+        jsonData = self.cryptoDataDf.to_dict('records')
         # insert new documents
-        ids = clean_collection.insert_many(self.cryptoDataDf)
+        clean_collection.insert_many(jsonData)
         return self
 
     """
@@ -299,11 +297,39 @@ class FinalDataProcessor:
         _data = kafkaMessage
         self.__targetRecordId = _data["id"]
         self.__targetRecordTimestamp = _data["timestamp"]
-        return _data
+        self.__weightedRedditPolarity = _data["weightedRedditPolarity"]
+
+    def getRecordsInTimeRage(self, rangeMinutes=100) :
+
+        """
+        This func is used in order to get records in time range from
+        flatten_crypto_data collection
+        :param rangeMinutes:
+        :return: a dataFrame with the rows.
+        """
+
+        # creating or switching to ais_navigation collection
+        _collection = self.db.flatten_crypto_data
+
+        # Mongo response
+        timeFrom = int(self.__targetRecordTimestamp)
+        timeRange = (rangeMinutes * self.ONE_MINUTE_SECONDS)
+        toTime = timeFrom - timeRange
+
+        _res = _collection.find(
+            {'unix_timestamp' : {'$lt' : timeFrom, '$gte' : toTime}}
+        )
+
+        jsonData = list(_res)
+
+        df = pd.DataFrame.from_dict(jsonData)
+        if not df.empty:
+            df.drop(columns=['_id'], inplace=True)
+        return df
 
 
 if __name__ == '__main__' :
-    isTestImpl = True
+    isTestImpl = False
 
     # test implementation
     if isTestImpl :
@@ -316,14 +342,17 @@ if __name__ == '__main__' :
         for record in data:
             dummyMessage = {
                 "id": str(record["_id"]),
-                "timestamp": str(record["Ticker_timestamp"])
+                "timestamp": str(record["Ticker_timestamp"]),
+                "weightedRedditPolarity": str("0.623")
+
             }
 
             processor = FinalDataProcessor(dummyMessage) \
                 .getFlattenCryptoData() \
                 .renameProperties() \
                 .fixNullValues() \
-                .cleanOutliers()
+                .storeFlattenData()
+                # .cleanOutliers() TODO ADD IT (FYI DEN PAIZEI POLY KALA ME LIGA DATA)
 
             # flatten_df = processor.cryptoDataDf
             #
@@ -341,7 +370,7 @@ if __name__ == '__main__' :
         # Actual Implementation.
         # set up kafka raw crypto quotes consumer
         consumer = KafkaConsumer(
-            kafkaConnectors.KafkaTopics.ProcessedCryptoData.value,
+            kafkaConnectors.KafkaTopics.CompleteCryptoNLP.value,
             bootstrap_servers=kafkaConnectors.BOOTSTRAP_SERVERS,
             auto_offset_reset='earliest',
             enable_auto_commit=True,
@@ -350,11 +379,13 @@ if __name__ == '__main__' :
 
         # read consumer messages
         for message in consumer :
-            processor = FinalDataProcessor(message)\
+            kafkaMessage = message.value
+            processor = FinalDataProcessor(kafkaMessage)\
                 .getFlattenCryptoData()\
                 .renameProperties() \
                 .fixNullValues()\
-                .cleanOutliers()
+                .storeFlattenData()
+                # .cleanOutliers() TODO ADD IT (FYI DEN PAIZEI POLY KALA ME LIGA DATA)
 
     # store data to mongo
     # storeFlattenData(flatten_df.to_dict('records'))
