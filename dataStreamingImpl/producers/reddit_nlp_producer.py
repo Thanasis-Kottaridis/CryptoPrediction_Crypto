@@ -40,7 +40,7 @@ from json import loads, dumps
 
 # Reddit API Imports
 import praw
-from psaw import PushshiftAPI
+from pmaw import PushshiftAPI
 
 # sentiment preprocessing
 import string
@@ -59,12 +59,12 @@ from nltk.corpus import stopwords
 """
 isTestImpl = False
 mockKafkaMessage = {
-            "id": "638299c354f3f9b1a17dc8ea",
-            "timestamp": "1669503426"
-        }
+    "id": "638299c354f3f9b1a17dc8ea",
+    "timestamp": "1669503426"
+}
 
 
-class RedditNLPContext :
+class RedditNLPContext:
     """
     Context Vars.
     """
@@ -82,19 +82,20 @@ class RedditNLPContext :
     """
     Private Context var getters.
     """
+
     @property
     def kafkaMessage(self):
         return self.kafkaMessage
 
     @property
-    def targetRecordId(self) :
+    def targetRecordId(self):
         return self.__targetRecordId
 
     @property
-    def targetRecordTimestamp(self) :
+    def targetRecordTimestamp(self):
         return self.__targetRecordTimestamp
 
-    def __init__(self, kafkaMessage) -> None :
+    def __init__(self, kafkaMessage) -> None:
         self.__kafkaMessage = kafkaMessage
         self.__parseKafkaMessage(kafkaMessage)
 
@@ -105,20 +106,20 @@ class RedditNLPContext :
         # Set Initial State.
         self.setState(GetRedditPostsState())
 
-    def setState(self, state: RedditNLPState) :
+    def setState(self, state: RedditNLPState):
         print(f"Context: Transitioning to {type(state).__name__}")
         self._state = state
         self._state.context = self
         self._state.didEnter()
 
-    def presentState(self) :
+    def presentState(self):
         print(f"My Current State is {type(self._state).__name__}")
 
     """
     Private helper valus
     """
 
-    def __parseKafkaMessage(self, kafkaMessage) :
+    def __parseKafkaMessage(self, kafkaMessage):
         # TODO implement this method
         _data = kafkaMessage
         self.__targetRecordId = _data["id"]
@@ -126,29 +127,29 @@ class RedditNLPContext :
         return _data
 
 
-class RedditNLPState(ABC) :
+class RedditNLPState(ABC):
     _context: RedditNLPContext = None
 
     @property
-    def context(self) -> RedditNLPContext :
+    def context(self) -> RedditNLPContext:
         return self._context
 
     @context.setter
-    def context(self, context: RedditNLPContext) -> None :
+    def context(self, context: RedditNLPContext) -> None:
         self._context = context
 
     @abstractmethod
-    def didEnter(self) -> None :
+    def didEnter(self) -> None:
         # Default Implementation of method Next Step.
         pass
 
     @abstractmethod
-    def nextState(self) -> None :
+    def nextState(self) -> None:
         # Default Implementation of method Next Step.
         pass
 
 
-class GetRedditPostsState(RedditNLPState) :
+class GetRedditPostsState(RedditNLPState):
     """
     Private Const VARS
     """
@@ -173,13 +174,13 @@ class GetRedditPostsState(RedditNLPState) :
     Abstract State methods IMPL
     """
 
-    def didEnter(self) -> None :
+    def didEnter(self) -> None:
         # download nltk lexicon before process starts
         self.__downloadNLTKLexicons()
         self.__fetchRedditPosts()
         self.nextState()
 
-    def nextState(self) -> None :
+    def nextState(self) -> None:
         self.context.setState(UpdateBitcoinDataState())
         pass
 
@@ -188,13 +189,13 @@ class GetRedditPostsState(RedditNLPState) :
     """
 
     @classmethod
-    def __downloadNLTKLexicons(cls) :
+    def __downloadNLTKLexicons(cls):
         # Downloading NLTK’s databases
         nltk.download('vader_lexicon')  # get lexicons data
         nltk.download('punkt')  # Pre-trained models that help us tokenize sentences.
         nltk.download('stopwords')
 
-    def __fetchRedditPosts(self) -> None :
+    def __fetchRedditPosts(self) -> None:
         """
         This method is used to collect all reddit posts related to Crypto
         from a target time until current time.
@@ -217,7 +218,7 @@ class GetRedditPostsState(RedditNLPState) :
             user_agent='MyBot/0.0.1'
         )
 
-        api = PushshiftAPI(reddit)
+        api = PushshiftAPI(praw=reddit)
 
         print("-------- CURRENT UNIX --------")
         print(f"{time.time()}")
@@ -225,7 +226,7 @@ class GetRedditPostsState(RedditNLPState) :
 
         FROM_TIMESTAMP = int(time.time())
 
-        if self.__shouldStoreInMongo :
+        if self.__shouldStoreInMongo:
             """
                 @SOS!!!!
                 Change target timestamp to most recent post stored in MONGO.
@@ -233,20 +234,20 @@ class GetRedditPostsState(RedditNLPState) :
                 so we need to insert to mongo only reddit posts performed after last run.
             """
             cursor = collection.find().sort("created_unix", pymongo.DESCENDING).limit(1)
-            for doc in cursor :
+            for doc in cursor:
                 self.__TARGET_TIMESTAMP = int(doc["created_unix"])
 
         # Use This if you want to write in .CSV
         # initialize dataframe
         df = pd.DataFrame()
 
-        while True :
+        while True:
 
             # initialize dataframe
             df = pd.DataFrame()
 
             # The `search_comments` and `search_submissions` methods return generator objects
-            try :
+            try:
                 gen = api.search_submissions(
                     before=int(FROM_TIMESTAMP),
                     after=int(self.__TARGET_TIMESTAMP),
@@ -254,31 +255,31 @@ class GetRedditPostsState(RedditNLPState) :
                     sort="desc",
                     limit=100
                 )
-            except :
+            except:
                 print("Empty response no more data")
                 break
 
             # check if response has data
             results = list(gen)
-            if len(results) == 0 :
+            if len(results) == 0:
                 print("Empty response no more data")
                 break
 
-            for post in results :
+            for post in results:
                 # append relevant data to dataframe
 
                 df = df.append({
-                    'id' : post.id,
-                    'subreddit' : str(post.subreddit),
-                    'fullname' : post.name,
-                    'title' : post.title,
-                    'selftext' : post.selftext,
-                    'upvote_ratio' : post.upvote_ratio,
-                    'ups' : post.ups,
-                    'downs' : post.downs,
-                    'score' : post.score,
-                    'created_iso' : utils.utc_to_datetime(post.created),
-                    'created_unix' : post.created
+                    'id': post['id'],
+                    'subreddit': str(post['subreddit']),
+                    'title': post['title'],
+                    'fullname': post['name'],
+                    'selftext': post['selftext'],
+                    'upvote_ratio': post['upvote_ratio'],
+                    'ups': post['ups'],
+                    'downs': post['downs'],
+                    'score': post['score'],
+                    'created_iso': utils.utc_to_datetime(post['created']),
+                    'created_unix': post['created']
                 }, ignore_index=True)
 
             # Preform NLP Analysis for reddit batch.
@@ -291,24 +292,24 @@ class GetRedditPostsState(RedditNLPState) :
             df['weighted_polarity'] = df["compound"] * df['score']
 
             # get last subreddit created time
-            created_unix = int(df.iloc[-1 :].created_unix)
+            created_unix = int(df.iloc[-1:].created_unix)
 
             print("-----------------------------------------------")
             print(f"POSTS COUNT: {len(df.index)}")
             print(f"created_unix: {created_unix}, TARGET_TIMESTAMP: {self.__TARGET_TIMESTAMP}")
             print("-----------------------------------------------")
 
-            if created_unix <= self.__TARGET_TIMESTAMP :
+            if created_unix <= self.__TARGET_TIMESTAMP:
                 print(f"created_unix <= TARGET_TIMESTAMP: True")
                 break
-            else :
+            else:
                 FROM_TIMESTAMP = created_unix
 
-            if self.__shouldStoreInMongo :
+            if self.__shouldStoreInMongo:
                 # write to Mongo
                 print("Insert to Mongo")
                 collection.insert_many(df.to_dict('records'))
-            else :
+            else:
                 # write df to CSV
                 print("Store DF")
                 df.to_csv(
@@ -321,7 +322,7 @@ class GetRedditPostsState(RedditNLPState) :
                 )
 
     @classmethod
-    def __dataPreprocessing(cls, df: pd.DataFrame) -> pd.DataFrame :
+    def __dataPreprocessing(cls, df: pd.DataFrame) -> pd.DataFrame:
         """
                @TODO Data Cleanning
                @Remove:
@@ -335,7 +336,7 @@ class GetRedditPostsState(RedditNLPState) :
         df['title'] = df['title'].astype(str)
 
         # 1. Remove URLS
-        df['clean_title'] = df['title'].apply(lambda x : re.sub(r"http\S+", '', x))
+        df['clean_title'] = df['title'].apply(lambda x: re.sub(r"http\S+", '', x))
 
         # 2. remove punctuation from title.
         # df['clean_title'] = df['clean_title'].apply(lambda x: removePunctuation(x))
@@ -344,13 +345,13 @@ class GetRedditPostsState(RedditNLPState) :
         # df['clean_title'] = df['clean_title'].apply(lambda x: re.sub(r'\w+', '', x))
 
         # 3. Remove all emoji
-        df['clean_title'] = df['clean_title'].apply(lambda x : emoji.get_emoji_regexp().sub(u'', x))
+        df['clean_title'] = df['clean_title'].apply(lambda x: emoji.get_emoji_regexp().sub(u'', x))
 
         # 4. remove all single characters
-        df['clean_title'] = df['clean_title'].apply(lambda x : re.sub(r'\s+[a-zA-Z]\s+', '', x))
+        df['clean_title'] = df['clean_title'].apply(lambda x: re.sub(r'\s+[a-zA-Z]\s+', '', x))
 
         # 5. Substituting multiple spaces with single space
-        df['clean_title'] = df['clean_title'].apply(lambda x : re.sub(r'\s+', ' ', x))
+        df['clean_title'] = df['clean_title'].apply(lambda x: re.sub(r'\s+', ' ', x))
 
         # 6. make text to lowercase and tokenize the text
         # df['clean_title'] = df['clean_title'].apply(lambda x: tokenize(x.lower()))
@@ -374,7 +375,7 @@ class GetRedditPostsState(RedditNLPState) :
         return df
 
     @classmethod
-    def __getPolarity(cls, df: pd.DataFrame) -> pd.DataFrame :
+    def __getPolarity(cls, df: pd.DataFrame) -> pd.DataFrame:
         """
             This helper function is used in order to get polarity of all reddit post titles in a given DF.
             polarity is calculated using NLTK and VADER analyzer.
@@ -412,12 +413,12 @@ class GetRedditPostsState(RedditNLPState) :
         return df
 
 
-class UpdateBitcoinDataState(RedditNLPState) :
+class UpdateBitcoinDataState(RedditNLPState):
     # Unix Time Consts
     __ONE_MINUTE_SECONDS = 60
     __weightedRedditPolarity = None
 
-    def didEnter(self) -> None :
+    def didEnter(self) -> None:
         # 1. get Weighted Reddit Polarity for posts in range
         #   from record timestamp plus 30 minutes
         self.__weightedRedditPolarity = self.__getWeightedRedditPolarity(
@@ -433,18 +434,19 @@ class UpdateBitcoinDataState(RedditNLPState) :
         # 3. enter next state
         self.nextState()
 
-    def nextState(self) -> None :
+    def nextState(self) -> None:
         self.context.setState(ProduceKafkaMessage(self.__weightedRedditPolarity))
 
     """
     Private Helper Functions
     """
-    def __getRedditPostsInRange(self, timeFrom: int, timeRange: int) -> pd.DataFrame :
+
+    def __getRedditPostsInRange(self, timeFrom: int, timeRange: int) -> pd.DataFrame:
         redditCollection = self.context.db.reddit_crypto_data
 
         # vres ta posts pou eginan tin teleftea misi wra
         toTime = timeFrom - timeRange
-        redditPosts = redditCollection.find({'created_unix' : {'$lt' : timeFrom, '$gte' : toTime}})
+        redditPosts = redditCollection.find({'created_unix': {'$lt': timeFrom, '$gte': toTime}})
         print(redditPosts.count())
         return pd.DataFrame(list(redditPosts))
 
@@ -453,16 +455,16 @@ class UpdateBitcoinDataState(RedditNLPState) :
         # filter results df
         resultsDf = self.__getRedditPostsInRange(timeFrom, timeRange)
 
-        if len(resultsDf.index) == 0 :
+        if len(resultsDf.index) == 0:
             return 0
 
         scoreSum = resultsDf["score"].sum()
         print("-------- weighted_polarity calculated --------")
-        if scoreSum == 0 :
+        if scoreSum == 0:
             res = resultsDf['weighted_polarity'].sum()
             print(f"-------- {res} -------- \n")
             return res
-        else :
+        else:
             res = resultsDf['weighted_polarity'].sum() / resultsDf["score"].sum()
             print(f"-------- {res} -------- \n")
             return res
@@ -483,23 +485,22 @@ class UpdateBitcoinDataState(RedditNLPState) :
 
         # update record by id
         # upsert = False will update doc instead of inserting new one
-        collection.update_one({'_id' : mongoId}, {"$set" : record}, upsert=False)
+        collection.update_one({'_id': mongoId}, {"$set": record}, upsert=False)
 
 
 class ProduceKafkaMessage(RedditNLPState):
-
     __weightedRedditPolarity = None
 
-    def __init__(self, weightedRedditPolarity) -> None :
+    def __init__(self, weightedRedditPolarity) -> None:
         self.__weightedRedditPolarity = weightedRedditPolarity
 
-    def didEnter(self) -> None :
+    def didEnter(self) -> None:
         # 1. create kafka producer
         producer = kafkaConnectors.connectKafkaProducer()
 
         # 2. Create Message payload
         kafkaMessagePayload = {
-            "id" : self.context.targetRecordId,
+            "id": self.context.targetRecordId,
             "timestamp": self.context.targetRecordTimestamp,
             "weightedRedditPolarity": self.__weightedRedditPolarity
         }
@@ -515,14 +516,14 @@ class ProduceKafkaMessage(RedditNLPState):
         # 4. call next state (For future usage)
         self.nextState()
 
-    def nextState(self) -> None :
+    def nextState(self) -> None:
         print("----------------------------")
         print(f"NLP preprocessing of record {self.context.targetRecordId} Completed Successfully!!!")
         print("----------------------------")
         pass
 
 
-if __name__ == '__main__' :
+if __name__ == '__main__':
     # test implementation
     if isTestImpl:
         myStateMachine = RedditNLPContext(kafkaMessage=mockKafkaMessage)
@@ -537,10 +538,10 @@ if __name__ == '__main__' :
             auto_offset_reset='earliest',
             enable_auto_commit=True,
             group_id='my-group',
-            value_deserializer=lambda x : loads(x.decode('utf-8')))
+            value_deserializer=lambda x: loads(x.decode('utf-8')))
 
         # read consumer messages
-        for message in consumer :
+        for message in consumer:
             kafkaMessage = message.value
             myStateMachine = RedditNLPContext(kafkaMessage=kafkaMessage)
             myStateMachine.presentState()
